@@ -4,6 +4,11 @@ on:
   pull_request:
     paths-ignore:
       - "**/*.md"
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - "**/*.md"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -52,7 +57,12 @@ jobs:
 
       - name: Build and push image
         run: |
-          IMAGE_TAG=ghcr.io/${{ github.repository_owner }}/powerrag:${{ github.sha }}
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            IMAGE_TAG=ghcr.io/${{ github.repository_owner }}/powerrag:pr-${{ github.event.pull_request.number }}
+          else
+            IMAGE_TAG=ghcr.io/${{ github.repository_owner }}/powerrag:latest
+          fi
+          echo "Commit hash: ${{ github.sha }}"
           echo "Docker image tag: ${IMAGE_TAG}"
           docker build \
             --build-arg LIGHTEN=1 \
