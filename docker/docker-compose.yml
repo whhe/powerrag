@@ -46,8 +46,8 @@ services:
     volumes:
       - ./oceanbase/data:/var/lib/oceanbase/store
       - ./oceanbase/conf:/var/lib/oceanbase/etc
-      - ./oceanbase/conf/:/var/lib/oceanbase/.initialized
-      - ./oceanbase/conf/:/var/lib/oceanbase/.meta
+      - ob_initialized:/var/lib/oceanbase/.initialized
+      - ob_meta:/var/lib/oceanbase/.meta
       - ./oceanbase/log:/var/lib/oceanbase/log
       - ./oceanbase/init.d:/root/boot/init.d
     networks:
@@ -86,6 +86,10 @@ services:
       start_period: 40s
     networks:
       - powerrag
+
+volumes:
+  ob_initialized:
+  ob_meta:
 
 networks:
   powerrag:
