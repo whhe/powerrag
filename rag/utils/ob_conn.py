@@ -24,6 +24,7 @@ from elasticsearch_dsl import Q, Search
 from pydantic import BaseModel
 from pymysql.converters import escape_string
 from pyobvector import ObVecClient, FtsIndexParam, FtsParser, ARRAY, VECTOR
+from pyobvector.client import ClusterVersionException
 from pyobvector.client.hybrid_search import HybridSearch
 from pyobvector.util import ObVersion
 from sqlalchemy import text, Column, String, Integer, JSON, Double, Row, Table
@@ -31,10 +32,10 @@ from sqlalchemy.dialects.mysql import LONGTEXT, TEXT
 from sqlalchemy.sql.type_api import TypeEngine
 
 from api.utils.configs import get_base_config
+from common import settings
 from common.constants import PAGERANK_FLD, TAG_FLD
 from common.decorator import singleton
 from common.float_utils import get_float
-from common import settings
 from rag.nlp import rag_tokenizer
 from rag.utils.doc_store_conn import DocStoreConnection, MatchExpr, OrderByExpr, FusionExpr, MatchTextExpr, \
     MatchDenseExpr
@@ -388,6 +389,21 @@ class OBConnection(DocStoreConnection):
         self._check_ob_version()
         self._try_to_update_ob_query_timeout()
 
+        if self.enable_hybrid_search:
+            try:
+                self.es = HybridSearch(
+                    uri=self.uri,
+                    user=self.username,
+                    password=self.password,
+                    db_name=self.db_name,
+                    pool_pre_ping=True,
+                    pool_recycle=3600,
+                )
+                logger.info("OceanBase Hybrid Search feature is enabled")
+            except ClusterVersionException as e:
+                logger.info("Failed to initialize HybridSearch client, fallback to use SQL", exc_info=e)
+                self.es = None
+
         if self.es is not None:
             self.search_original_content = False
         self.fulltext_search_columns = fts_columns_origin if self.search_original_content else fts_columns_tks
@@ -410,18 +426,6 @@ class OBConnection(DocStoreConnection):
             raise Exception(
                 f"The version of OceanBase needs to be higher than or equal to 4.3.5.1, current version is {version_str}"
             )
-
-        self.es = None
-        if not ob_version < ObVersion.from_db_version_nums(4, 4, 1, 0) and self.enable_hybrid_search:
-            self.es = HybridSearch(
-                uri=self.uri,
-                user=self.username,
-                password=self.password,
-                db_name=self.db_name,
-                pool_pre_ping=True,
-                pool_recycle=3600,
-            )
-            logger.info("OceanBase Hybrid Search feature is enabled")
 
     def _try_to_update_ob_query_timeout(self):
         try:
