@@ -107,17 +107,6 @@ index_columns: list[str] = [
     "removed_kwd",
 ]
 
-fulltext_search_columns: list[str] = [
-    "docnm_kwd",
-    "content_with_weight",
-    "title_tks",
-    "title_sm_tks",
-    "important_tks",
-    "question_tks",
-    "content_ltks",
-    "content_sm_ltks"
-]
-
 fts_columns_origin: list[str] = [
     "docnm_kwd^10",
     "content_with_weight",
@@ -399,6 +388,10 @@ class OBConnection(DocStoreConnection):
         self._check_ob_version()
         self._try_to_update_ob_query_timeout()
 
+        if self.es is not None:
+            self.search_original_content = False
+        self.fulltext_search_columns = fts_columns_origin if self.search_original_content else fts_columns_tks
+
         logger.info(f"OceanBase {self.uri} is healthy.")
 
     def _check_ob_version(self):
@@ -501,8 +494,7 @@ class OBConnection(DocStoreConnection):
                     process_func=lambda: self._add_index(indexName, column_name),
                 )
 
-            fts_columns = fts_columns_origin if self.search_original_content else fts_columns_tks
-            for fts_column in fts_columns:
+            for fts_column in self.fulltext_search_columns:
                 column_name = fts_column.split("^")[0]
                 _try_with_lock(
                     lock_name=f"ob_add_fulltext_idx_{indexName}_{column_name}",
@@ -553,8 +545,7 @@ class OBConnection(DocStoreConnection):
             for column_name in index_columns:
                 if not self._index_exists(indexName, index_name_template % (indexName, column_name)):
                     return False
-            fts_columns = fts_columns_origin if self.search_original_content else fts_columns_tks
-            for fts_column in fts_columns:
+            for fts_column in self.fulltext_search_columns:
                 column_name = fts_column.split("^")[0]
                 if not self._index_exists(indexName, fulltext_index_name_template % column_name):
                     return False
@@ -854,10 +845,8 @@ class OBConnection(DocStoreConnection):
                 fulltext_query = escape_string(fulltext_query.strip())
                 fulltext_topn = m.topn
 
-                fts_columns = fts_columns_origin if self.search_original_content else fts_columns_tks
-
                 # get fulltext match expression and weight values
-                for field in fts_columns:
+                for field in self.fulltext_search_columns:
                     parts = field.split("^")
                     column_name: str = parts[0]
                     column_weight: float = float(parts[1]) if (len(parts) > 1 and parts[1]) else 1.0
