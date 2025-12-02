@@ -389,6 +389,7 @@ class OBConnection(DocStoreConnection):
         self._check_ob_version()
         self._try_to_update_ob_query_timeout()
 
+        self.es = None
         if self.enable_hybrid_search:
             try:
                 self.es = HybridSearch(
