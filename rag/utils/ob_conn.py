@@ -17,6 +17,7 @@ import json
 import logging
 import os
 import re
+import threading
 import time
 from typing import Any, Optional
 
@@ -366,7 +367,12 @@ class OBConnection(DocStoreConnection):
 
         logger.info(f"Use OceanBase '{self.uri}' as the doc engine.")
 
+        # Set the maximum number of connections that can be created above the pool_size.
+        # By default, this is half of max_connections, but at least 10.
+        # This allows the pool to handle temporary spikes in demand without exhausting resources.
         max_overflow = int(os.environ.get("OB_MAX_OVERFLOW", max(max_connections // 2, 10)))
+        # Set the number of seconds to wait before giving up when trying to get a connection from the pool.
+        # Default is 30 seconds, but can be overridden with the OB_POOL_TIMEOUT environment variable.
         pool_timeout = int(os.environ.get("OB_POOL_TIMEOUT", "30"))
 
         for _ in range(ATTEMPT_TIME):
@@ -415,11 +421,17 @@ class OBConnection(DocStoreConnection):
                 logger.info("Failed to initialize HybridSearch client, fallback to use SQL", exc_info=e)
                 self.es = None
 
-        if self.es is not None:
+        if self.es is not None and self.search_original_content:
+            logger.info("HybridSearch is enabled, forcing search_original_content to False")
             self.search_original_content = False
+        # Determine which columns to use for full-text search dynamically:
+        # If HybridSearch is enabled (self.es is not None), we must use tokenized columns (fts_columns_tks)
+        # for compatibility and performance with HybridSearch. Otherwise, we use the original content columns
+        # (fts_columns_origin), which may be controlled by an environment variable.
         self.fulltext_search_columns = fts_columns_origin if self.search_original_content else fts_columns_tks
 
         self._table_exists_cache: set[str] = set()
+        self._table_exists_cache_lock = threading.RLock()
 
         logger.info(f"OceanBase {self.uri} is healthy.")
 
@@ -493,6 +505,8 @@ class OBConnection(DocStoreConnection):
         """
         Check table existence with cache to reduce INFORMATION_SCHEMA queries under high concurrency.
         Only caches when table exists. Does not cache when table does not exist.
+        Thread-safe implementation: read operations are lock-free (GIL-protected),
+        write operations are protected by RLock to ensure cache consistency.
 
         Args:
             table_name: Table name
@@ -519,7 +533,9 @@ class OBConnection(DocStoreConnection):
         except Exception as e:
             raise Exception(f"OBConnection._check_table_exists_cached error: {str(e)}")
 
-        self._table_exists_cache.add(table_name)
+        with self._table_exists_cache_lock:
+            if table_name not in self._table_exists_cache:
+                self._table_exists_cache.add(table_name)
         return True
 
     """
