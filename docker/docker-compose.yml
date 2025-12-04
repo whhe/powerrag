@@ -43,6 +43,12 @@ services:
     env_file: .env
     environment:
       - INIT_SCRIPTS_PATH=/root/boot/init.d
+      - ROOT_PASSWORD=${ROOT_PASSWORD:-powerrag}
+      - MEMORY_LIMIT=${MEMORY_LIMIT:-6G}
+      - LOG_DISK_SIZE=${LOG_DISK_SIZE:-20G}
+      - DATAFILE_SIZE=${DATAFILE_SIZE:-20G}
+      - OCEANBASE_META_DBNAME=${OCEANBASE_META_DBNAME:-powerrag}
+      - OCEANBASE_DOC_DBNAME=${OCEANBASE_DOC_DBNAME:-powerrag_doc}
     volumes:
       - ./oceanbase/data:/var/lib/oceanbase
       - ./oceanbase/init.d:/root/boot/init.d
